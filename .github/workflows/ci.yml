@@ -1,0 +1,69 @@
+name: '.NET Core Build'
+
+on: 
+  push:
+  workflow_dispatch:
+  
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v2
+      - run: echo ${{matrix.os}}
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1.7.2
+        with:
+         dotnet-version: 6.0.x
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
+      - name: Cache build and dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+  run_unit_tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 6.0.x
+    - name: Restore projects
+      run: dotnet restore
+    - name: Build project
+      run: dotnet build
+    - name: Run tests with coverage
+      run: dotnet test --no-build --collect:"XPlat Code Coverage"
+    - name: ReportGenerator
+      uses: danielpalme/ReportGenerator-GitHub-Action@5.0.0
+      with:
+        reports: 'Tests/TestResults/**/coverage.cobertura.xml'
+        targetdir: 'CoverageReports'
+        reporttypes: 'HtmlInline;Cobertura'
+        verbosity: 'Verbose'
+        toolpath: 'reportgeneratortool'
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: CoverageReports        
+        path: CoverageReports
+    - name: List files
+      run: cd CoverageReports && ls && cd ..
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: CoverageReports/Cobertura.xml
+        name: codecov-umbrella
+        fail_ci_if_error: true
+        verbose: true
+ 
